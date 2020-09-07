@@ -327,7 +327,8 @@ def get_memory_banks_per_run(coreAssignment, cgroups):
             for core in cores:
                 coreDir = f"/sys/devices/system/cpu/cpu{core}/"
                 mems.update(_get_memory_banks_listed_in_dir(coreDir))
-            allowedMems = sorted(mems.intersection(allMems))
+            # allowedMems = sorted(mems.intersection(allMems))
+            allowedMems = sorted(allMems)
             logging.debug(
                 "Memory banks for cores %s are %s, of which we can use %s.",
                 cores,
