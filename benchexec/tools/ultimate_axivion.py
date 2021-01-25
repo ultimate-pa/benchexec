@@ -31,6 +31,7 @@ class UnsupportedFeatureException(benchexec.BenchExecException):
     """
     Raised when a tool or its tool-info module does not support a requested feature.
     """
+
     pass
 
 
@@ -60,21 +61,34 @@ class Tool(benchexec.tools.template.BaseTool):
         @return the version of Bauhaus and the version of Ultimate
         """
 
-        axivion_version_cmd = [executable, "-c", "import bauhaus.shared; print(bauhaus.shared.get_version_number())"]
+        axivion_version_cmd = [
+            executable,
+            "-c",
+            "import bauhaus.shared; print(bauhaus.shared.get_version_number())",
+        ]
 
         # looks like this: (7, 0, 0, 4283)
         axivion_version_raw = self._version_from_tool(axivion_version_cmd)
         axivion_version_str = "_".join(
-            [i.replace('(', '').replace(')', '').replace(' ', '') for i in axivion_version_raw.split(sep=',')])
+            [
+                i.replace("(", "").replace(")", "").replace(" ", "")
+                for i in axivion_version_raw.split(sep=",")
+            ]
+        )
 
         # for final tool info module methods we should integrate an alternate --version command into ultimate axivion
         # that already generates the shared version
-        java_path = os.environ['ULTIMATE_JAVA']
-        ult_path = os.environ['ULTIMATE_DIR']
+        java_path = os.environ["ULTIMATE_JAVA"]
+        ult_path = os.environ["ULTIMATE_DIR"]
 
         ult_version_cmd = [
-            java_path, "-Xss4m", "-jar",
-            os.path.join(ult_path, "plugins/org.eclipse.equinox.launcher_1.3.100.v20150511-1540.jar"),
+            java_path,
+            "-Xss4m",
+            "-jar",
+            os.path.join(
+                ult_path,
+                "plugins/org.eclipse.equinox.launcher_1.5.800.v20200727-1323.jar",
+            ),
             "-data",
             "@noDefault",
             "-ultimatedata",
@@ -82,7 +96,9 @@ class Tool(benchexec.tools.template.BaseTool):
             "--version",
         ]
         ult_version_raw = self._version_from_tool(ult_version_cmd)
-        match = re.compile(r"^This is Ultimate (.*)$", re.MULTILINE).search(ult_version_raw)
+        match = re.compile(r"^This is Ultimate (.*)$", re.MULTILINE).search(
+            ult_version_raw
+        )
         return axivion_version_str + "/" + match.group(1)
 
     def _version_from_tool(self, popen_arg):
@@ -98,9 +114,7 @@ class Tool(benchexec.tools.template.BaseTool):
             (stdout, stderr) = process.communicate()
         except OSError as e:
             logging.warning(
-                "Cannot run {0} to determine version: {1}".format(
-                    popen_arg, e.strerror
-                )
+                "Cannot run {0} to determine version: {1}".format(popen_arg, e.strerror)
             )
             return ""
         if process.returncode:
@@ -152,17 +166,18 @@ class Tool(benchexec.tools.template.BaseTool):
 cat {prop_file}
 "{cafe_cc}" -B "{input_dir}" -o "{ir_file}" -n "{temp_dir}" "{input_file}"
 "{axivion_analysis}" --ir "{ir_file}"
-""".format(cafe_cc=self.__cafe_cc(),
-           input_dir=input_dir,
-           ir_file=ir_file,
-           temp_dir=temp_dir,
-           input_file=input_file,
-           axivion_analysis=axivion_analysis,
-           prop_file=propertyfile
-           )
+""".format(
+                cafe_cc=self.__cafe_cc(),
+                input_dir=input_dir,
+                ir_file=ir_file,
+                temp_dir=temp_dir,
+                input_file=input_file,
+                axivion_analysis=axivion_analysis,
+                prop_file=propertyfile,
+            )
 
             mini_script_file = tempfile.NamedTemporaryFile(delete=False)
-            with open(mini_script_file.name, 'w') as f:
+            with open(mini_script_file.name, "w") as f:
                 f.write(mini_script)
 
             os.chmod(mini_script_file.name, 0o777)
@@ -171,7 +186,9 @@ cat {prop_file}
             # The script ignores them completely
             call = [mini_script_file.name] + options + tasks
             return call + [propertyfile] if propertyfile else call
-        raise UnsupportedFeatureException("{} does not support {} input files.".format(self.name(), len(tasks)))
+        raise UnsupportedFeatureException(
+            "{} does not support {} input files.".format(self.name(), len(tasks))
+        )
 
     def determine_result(self, returncode, returnsignal, output, isTimeout):
         """
@@ -204,7 +221,9 @@ cat {prop_file}
         is_valid_memtrack = any(["LTL(G valid-memtrack)" in prp for prp in output])
         is_valid_memcleanup = any(["LTL(G valid-memcleanup)" in prp for prp in output])
 
-        re_other_errors = re.compile("error:.*possibly released by call to.*is a stack object")
+        re_other_errors = re.compile(
+            "error:.*possibly released by call to.*is a stack object"
+        )
 
         for idx, line in enumerate(output):
             if "Number of compiler messages:" in line:
@@ -217,9 +236,15 @@ cat {prop_file}
                 if "error: Pointer is NULL at dereference" in line:
                     return result.RESULT_FALSE_DEREF
             if is_valid_free:
-                if "error: Dynamic memory released here possibly already released earlier" in line:
+                if (
+                    "error: Dynamic memory released here possibly already released earlier"
+                    in line
+                ):
                     return result.RESULT_FALSE_FREE
-                if "error: Dynamic memory possibly used after it was previously released" in line:
+                if (
+                    "error: Dynamic memory possibly used after it was previously released"
+                    in line
+                ):
                     return result.RESULT_FALSE_FREE
             if is_valid_memtrack:
                 if "error: Call allocates possibly leaking memory" in line:
