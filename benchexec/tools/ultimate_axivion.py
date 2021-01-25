@@ -231,7 +231,7 @@ cat {prop_file}
                 if next and "Number of errors:" in next:
                     return "cafeCC errors: {}".format(int(next.split(":")[1]))
                 if next and "Number of warnings:" in next:
-                    return "cafeCC errors: {}".format(int(next.split(":")[1]))
+                    return "cafeCC warnings: {}".format(int(next.split(":")[1]))
             if is_valid_deref:
                 if "error: Pointer may be NULL at dereference" in line:
                     return result.RESULT_FALSE_DEREF
