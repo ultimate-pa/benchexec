@@ -70,7 +70,7 @@ def get_cpu_cores_per_run(
                 raise ValueError(
                     "The following provided CPU cores are not available: "
                     + ", ".join(map(str, invalid_cores))
-                )
+                    )
             allCpus = [core for core in allCpus if core in coreSet]
 
         logging.debug("List of available CPU cores is %s.", allCpus)
@@ -112,8 +112,8 @@ def get_cpu_cores_per_run(
             siblings = util.parse_int_list(
                 util.read_file(
                     f"/sys/devices/system/cpu/cpu{core}/topology/thread_siblings_list"
+                    )
                 )
-            )
             siblings_of_core[core] = siblings
         logging.debug("Siblings of cores are %s.", siblings_of_core)
     except ValueError as e:
@@ -153,13 +153,13 @@ def _get_cpu_cores_per_run0(
         sys.exit(
             f"Cannot run benchmarks with {coreLimit} CPU cores, "
             f"only {coreCount} CPU cores available."
-        )
+            )
     if coreLimit * num_of_threads > coreCount:
         sys.exit(
             f"Cannot run {num_of_threads} benchmarks in parallel "
             f"with {coreLimit} CPU cores each, only {coreCount} CPU cores available. "
             f"Please reduce the number of threads to {coreCount // coreLimit}."
-        )
+            )
 
     if not use_hyperthreading:
         unit_of_core = {}
@@ -180,34 +180,23 @@ def _get_cpu_cores_per_run0(
         for core in unused_cores:
             siblings_of_core.pop(core)
         logging.debug(
-            "Running in no-hyperthreading mode, avoiding the use of CPU cores %s",
-            unused_cores,
-        )
+            f"Running in no-hyperthreading mode, "
+            f"avoiding the use of CPU cores {unused_cores}"
+            )
 
     unit_size = len(next(iter(cores_of_unit.values())))  # Number of units per core
     if any(len(cores) != unit_size for cores in cores_of_unit.values()):
-        sys.exit(
+            sys.exit(
             "Asymmetric machine architecture not supported: "
             "CPUs/memory regions with different number of cores."
-        )
+                )
 
     core_size = len(next(iter(siblings_of_core.values())))  # Number of threads per core
     if any(len(siblings) != core_size for siblings in siblings_of_core.values()):
-        sys.exit(
+            sys.exit(
             "Asymmetric machine architecture not supported: "
             "CPU cores with different number of sibling cores."
-        )
-
-    all_cpus_set = set(allCpus)
-    for core, siblings in siblings_of_core.items():
-        siblings_set = set(siblings)
-        if not siblings_set.issubset(all_cpus_set):
-            unusable_cores = siblings_set.difference(all_cpus_set)
-            sys.exit(
-                f"Core assignment is unsupported because siblings {unusable_cores} "
-                f"of core {core} are not usable. "
-                f"Please always make all virtual cores of a physical core available."
-            )
+                )
 
     # Second, compute some values we will need.
     unit_count = len(cores_of_unit)
@@ -221,7 +210,7 @@ def _get_cpu_cores_per_run0(
             f"Cannot split runs over multiple CPUs/memory regions "
             f"and at the same time assign multiple runs to the same CPU/memory region. "
             f"Please reduce the number of threads to {unit_count // units_per_run}."
-        )
+            )
 
     runs_per_unit = int(math.ceil(num_of_threads / unit_count))
     assert units_per_run == 1 or runs_per_unit == 1
@@ -231,7 +220,7 @@ def _get_cpu_cores_per_run0(
             f"on {unit_count} CPUs/memory regions with {unit_size} cores, "
             f"because runs would need to be split across multiple CPUs/memory regions. "
             f"Please reduce the number of threads."
-        )
+            )
 
     # Warn on misuse of hyper-threading
     need_HT = False
@@ -267,6 +256,7 @@ def _get_cpu_cores_per_run0(
     # Third, do the actual core assignment.
     result = []
     used_cores = set()
+    all_cpus_set = set(allCpus)
     for run in range(num_of_threads):
         # this calculation ensures that runs are split evenly across units
         start_unit = (run * units_per_run) % unit_count
@@ -281,7 +271,7 @@ def _get_cpu_cores_per_run0(
             for core in cores_of_unit[unit]:
                 if core not in cores:
                     cores.extend(
-                        c for c in siblings_of_core[core] if c not in used_cores
+                        c for c in siblings_of_core[core] if c not in used_cores and c in all_cpus_set
                     )
                 if len(cores) >= coreLimit:
                     break
@@ -375,13 +365,13 @@ def check_memory_size(memLimit, num_of_threads, memoryAssignment, my_cgroups):
                 sys.exit(
                     f"Cgroups allow only {actualLimit} bytes of memory to be used, "
                     f"cannot execute runs with {memLimit} bytes of memory."
-                )
+                    )
             elif actualLimit < memLimit * num_of_threads:
                 sys.exit(
                     f"Cgroups allow only {actualLimit} bytes of memory to be used, "
                     f"not enough for {num_of_threads} benchmarks with {memLimit} bytes "
                     f"each. Please reduce the number of threads."
-                )
+                    )
 
         if not os.path.isdir("/sys/devices/system/node/"):
             logging.debug(
@@ -421,13 +411,13 @@ def check_memory_size(memLimit, num_of_threads, memoryAssignment, my_cgroups):
             sys.exit(
                 f"Memory banks {mems_of_run} do not have enough memory for one run, "
                 f"only {totalSize} bytes available."
-            )
+                )
         usedMem[tuple(mems_of_run)] += memLimit
         if usedMem[tuple(mems_of_run)] > totalSize:
             sys.exit(
                 f"Memory banks {mems_of_run} do not have enough memory for all runs, "
                 f"only {totalSize} bytes available. Please reduce the number of threads."
-            )
+                )
 
 
 def _get_memory_bank_size(memBank):
@@ -461,4 +451,4 @@ def get_cpu_package_for_core(core):
 def get_cores_of_same_package_as(core):
     return util.parse_int_list(
         util.read_file(f"/sys/devices/system/cpu/cpu{core}/topology/core_siblings_list")
-    )
+        )
