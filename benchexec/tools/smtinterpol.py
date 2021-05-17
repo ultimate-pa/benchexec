@@ -6,10 +6,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import subprocess
-
+import re
 import benchexec.util as util
 import benchexec.tools.smtlib2
-
+import logging
 
 class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
     """
@@ -38,3 +38,12 @@ class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
     def cmdline(self, executable, options, tasks, propertyfile=None, rlimits={}):
         assert len(tasks) <= 1, "only one inputfile supported"
         return [executable, "-jar", "smtinterpol.jar"] + options + tasks
+
+    def get_value_from_output(self, output, identifier):
+        regex = re.compile(identifier)
+        for line in output:
+            match = regex.search(line)
+            if match and len(match.groups()) > 0:
+                return match.group(1)
+        logging.debug("Did not find a match with regex %s", identifier)
+        return None
