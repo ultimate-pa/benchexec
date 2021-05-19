@@ -10,6 +10,7 @@ import re
 import benchexec.util as util
 import benchexec.tools.smtlib2
 import logging
+import json
 
 class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
     """
@@ -40,10 +41,29 @@ class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
         return [executable, "-jar", "smtinterpol.jar"] + options + tasks
 
     def get_value_from_output(self, output, identifier):
-        regex = re.compile(identifier)
+        try:
+            val = json.loads(identifier)
+        except json.decoder.JSONDecodeError as ex:
+            raise AssertionError(f'Invalid JSON: "{identifier}". Should be {{ "Type" : "<FirstMatch>|<LastMatch>", "Expr": "<regexp>" }}')
+
+        mode = val.get('Type','FirstMatch')
+        expr = val['Expr']
+        if 'FirstMatch' == mode:
+            return self._get_value_from_output_regex(mode, output, expr)
+        elif 'LastMatch' == mode:
+            return self._get_value_from_output_regex(mode, reversed(output), expr)
+        else:
+            raise AssertionError(f"Unknown column mode {mode}")
+
+    def _get_value_from_output_regex(self, mode, output, expr):
+        regex = re.compile(expr)
+        i=0
         for line in output:
+            i=i+1
             match = regex.search(line)
             if match and len(match.groups()) > 0:
                 return match.group(1)
-        logging.debug("Did not find a match with regex %s", identifier)
+        logging.debug(f"Did not find a match with regex {expr} and mode {mode} in {i} lines")
         return None
+    
+
