@@ -148,6 +148,8 @@ class Column(object):
         scale_factor=None,
         relevant_for_diff=None,
         display_title=None,
+        denominator=None,
+        copy=None,
     ):
 
         # If scaling on the variables is performed, a display unit must be defined, explicitly
@@ -176,6 +178,9 @@ class Column(object):
 
         # expected maximum width (in characters)
         self.max_width = None
+
+        self.denominator = denominator
+        self.copy = copy
 
     def is_numeric(self):
         return (
@@ -386,7 +391,9 @@ def _format_number(
         # Round to the given amount of significant digits
         intended_digits = min(initial_value_sig_digits, number_of_significant_digits)
 
-        assert number.adjusted() == int(floor(log10(abs(number))))
+        if (number.adjusted() != int(floor(log10(abs(number))))):
+            print("for " + str(number) + ": " + str(number.adjusted()) + " == " + str(int(floor(log10(abs(number))))))
+        #assert number.adjusted() == int(floor(log10(abs(number))))
         rounding_point = -number.adjusted() + (intended_digits - 1)
         # Contrary to its documentation, round() seems to be affected by the rounding
         # mode of decimal's context (which is good for us) when rounding Decimals.

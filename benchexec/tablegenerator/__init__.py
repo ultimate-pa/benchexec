@@ -25,6 +25,7 @@ import typing
 import urllib.parse
 import urllib.request
 from xml.etree import ElementTree
+from decimal import Decimal
 
 from benchexec import __version__, BenchExecException
 import benchexec.model as model
@@ -261,6 +262,8 @@ def extract_columns_from_table_definition_file(xmltag, table_definition_file):
             scale_factor,
             c.get("relevantForDiff"),
             c.get("displayTitle"),
+            c.get("denominator"),
+            c.get("copy"),
         )
         columns.append(new_column)
 
@@ -889,6 +892,7 @@ class RunResult(object):
         logfileLines = None
 
         values = []
+        valueDict = {}
 
         for column in listOfColumns:  # for all columns that should be shown
             value = None  # default value
@@ -896,7 +900,10 @@ class RunResult(object):
                 value = status
 
             elif not correct_only or category == result.CATEGORY_CORRECT:
-                if not column.pattern or column.href:
+                if column.copy is not None:
+                    # set to None now, copy later
+                    value = None
+                elif not column.pattern or column.href:
                     # collect values from XML
                     value = util.get_column_value(sourcefileTag, column.title)
 
@@ -911,6 +918,24 @@ class RunResult(object):
                 # if available
                 value = str(score)
             values.append(value)
+            valueDict[column.title] = value
+
+        for i, column in enumerate(listOfColumns):
+            if column.copy is not None:
+                values[i] = valueDict[column.copy]
+            if column.denominator is not None:
+                numerator_value = values[i]
+                denominator_value = valueDict[column.denominator]
+                if numerator_value is None or denominator_value is None:
+                    values[i] = None
+                else:
+                    numerator_str = util.remove_unit(numerator_value.strip())
+                    denominator_str = util.remove_unit(denominator_value.strip())
+                    denominator = float(denominator_str)
+                    if denominator == 0.0:
+                        values[i] = None
+                    else:
+                        values[i] = str(float(numerator_str) / denominator)
 
         return RunResult(
             task_id,
