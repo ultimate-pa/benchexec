@@ -9,6 +9,142 @@ SPDX-License-Identifier: Apache-2.0
 
 # BenchExec Changelog
 
+## BenchExec 3.13
+
+- More robust handling of child cgroups created within a run  
+  Note that it is not safe to execute an untrusted tool inside a BenchExec run
+  and give it access to cgroups
+  (e.g., with `--no-container` or `--full-access /sys/fs/cgroups`).
+  However, some users want to execute trusted tools with cgroup access
+  (e.g., nesting `runexec`) and we aim to support this.
+  It was found that BenchExec could hang or crash in certain cases
+  where child cgroups were created by the process within a run
+  and used to freeze processes (done by nested `runexec`, for example),
+  or were made inaccessible using file-system permissions.
+  This lead to incomplete run cleanup and processes left running
+  or hanging in an unkillable state.
+  This release fixes such situations and users who allow cgroup access
+  within runs are strongly recommended to upgrade.
+- Fix incomplete rewriting of numbers into roman numerals
+  in the new LaTeX output for statistics.
+
+This release does not change the minimum supported Python version,
+but we would like to remind you
+that BenchExec will soon stop supporting Python 3.6.
+
+## BenchExec 3.12
+
+- Compatibility with Python 3.10  
+  **Note that it is expected that this is one of the last releases
+  that supports Python 3.6.**
+- Export of statistics as LaTex commands in table-generator:  
+  All those values that exist in the statistics table on the Summary tab of our HTML tables
+  can be exported as a series of LaTeX commands with `--format=statistics-tex`.
+  These can then be included in a paper and the commands can be used
+  to retrieve the statistics values
+  ([documentation](https://github.com/sosy-lab/benchexec/blob/main/doc/table-generator.md#latex-export)).
+  The script `contrib/statistics-tex.py` that provided a subset of this functionality so far
+  is removed.
+  Thanks to @Sowasvonbot for implementing this!
+- Slight improvements for mounting overlayfs:
+  - Avoid redundant mount points that could prevent certain nested mounts.
+  - Avoid a warning in the kernel log.
+- Fix handling of non-printable characters in environment variables.
+- Slight improvements for the HTML tables:
+  - Use of color for categories in filters
+  - More informative tooltip in quantile plots (thanks @leventeBajczi)
+- Added and improved tool-info modules
+
+## BenchExec 3.11
+
+This release brings one major feature for the HTML tables:
+The **statistics on the summary tab are now updated on-the-fly**
+if filters are applied and always take those filters into account
+(i.e., only show statistics about the selected rows).
+We update the row name in the statistics table to indicate this,
+but still be aware of it if you are accustomed to the previous behavior!
+This was also the last place in the HTML tables where filters were not respected,
+so now filters are taking into account consistently
+wherever data are shown or used.
+Thanks to @DennisSimon for implementing this!
+
+There are also a few other improvements and fixes:
+
+- Fix loading logs from local HTML tables in Chrome/Chromium.
+- Update hint on which Firefox setting to change
+  for access to logs from local HTML tables.
+- When loading logs from local HTML tables fails,
+  show a hint on how to start a small HTTP server with Python
+  and let it serve the table and logs.
+  Using this server to access the table from the browser
+  instead of `file://` URLs will make the log access work
+  regardless of browser versions and configuration options.
+  The shown hint even includes a command line
+  that just needs to be copy-and-pasted.
+- Fix sliders jumping around in the filter sidebar
+  when defining filters for numeric columns.
+- Some tool-info modules were improved.
+
+## BenchExec 3.10
+
+- Fix bug in HTML tables where content of a cell could be visible
+  through another cell when scrolling horizontally.
+- Slightly improved error handling and error messages
+  regarding cgroup permissions, cgroupsv2, and invalid directory modes.
+- Improved handling of debug log (`--debug`).
+  Previously, every transferred output file of the tool was logged,
+  which would lead to large debug logs in case a tool produced many files.
+  Now we log only the names of at most 1000 such output files.
+- Many new and improved tool-info modules.
+- The default branch of the git repository has been renamed to `main`.
+  Please adjust forks and checkouts if required.
+
+## BenchExec 3.9
+
+- Improved container mode to make it work more easily inside LXC containers.
+- The scatter plot in HTML tables produced by table-generator
+  can now show a linear-regression graph using ordinary least squares.
+  A tooltip shows more information such as the regression coefficient.
+- The library that is used for rendering the actual tables
+  in the HTML tables got a major upgrade, which required some work.
+  If you notice any regression in table behavior,
+  please file an [issue](https://github.com/sosy-lab/benchexec/issues/new).
+- One new tool-info module.
+
+For people using the git repository of BenchExec:
+Immediately after the release of BenchExec 3.9,
+the default branch of the repository will be renamed to `main`.
+Please adjust forks and checkouts if required.
+
+## BenchExec 3.8
+
+This release works only on Python 3.6 and newer!
+
+- Add possibility to have a `close()` method to tool-info modules.
+- The `test_tool_info` utility now has a `--debug` argument
+  that will show the debug log, e.g., from the tool-info module.
+- Fix bug in detection of CPU throttling during benchmarking,
+  for which we warn if we detect it.
+  This did not work for cases with core numbers longer than one digit.
+- Properly escape the suggested command line for running table-generator
+  that is shown by benchexec before it terminates.
+- Allow specifying path to libseccomp via environment variable `LIBSECCOMP`.
+  This is useful for environments like NixOS.
+- Fix handling of empty result files in table-generator,
+  the generated HTML tables will work again.
+- Fix handling of empty run results when filtering rows in HTML tables.
+- Make filters for status and textual columns in HTML tables work
+  if filter string contains a colon.
+- When entering a filter in the HTML tables' filter row,
+  do not loose focus on the input field when applying the filter,
+  such that users can continue typing.
+- Fix invalid values shown in score-based quantile plot
+  if some runs of a table do not have a score value.
+  Now a run set is only shown in a score-based quantile plot
+  if all values have scores (otherwise the plot would be misleading).
+- Text selection now works as expected while an overlay window is open
+  in the HTML tables (only text in the overlay will be selected).
+
 ## BenchExec 3.7
 
 This is expected to be the last BenchExec release that supports Python 3.5,

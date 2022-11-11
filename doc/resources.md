@@ -19,9 +19,14 @@ When limiting CPU cores, BenchExec defines as a "core" the smallest hardware uni
 that can execute a thread in parallel to other such units.
 This is often called "virtual core", and the Linux kernel refers to this as "processor"
 (in `/proc/cpuinfo`) and as "CPU" (under `/sys/devices/system/cpu/`).
-This means, for example that assigning 8 cores per run on a system with hyper threading
+When assigning more than one core to a run,
+BenchExec makes sure to select cores that are as close to each other as possible
+in the hardware architecture of the CPU.
+This means for example that assigning 8 cores per run on a system with hyper threading
 will allocate 4 physical cores (each with 2 hyper-threading cores) to each run.
-
+The only exception is if `--no-hyperthreading` is used,
+in which case all but one virtual core per physical core remain unused.
+Furthermore, users of BenchExec can prevent usage of certain cores with `--allowedCores`.
 
 ## Memory
 
@@ -46,6 +51,22 @@ On systems with swap, BenchExec always measures and limits the complete memory u
 i.e., its usage of physical RAM plus swap usage.
 BenchExec also tries to disallow swapping of the benchmarked tool,
 if the kernel allows this.
+
+
+## Time Limit
+
+The time limit of BenchExec always refers to the CPU time of the executed tool
+unless explicitly specified otherwise.
+CPU time measure the time that the tool was actually making use of CPU cores,
+i.e., without times where the tool slept.
+If the tool uses more than one CPU core at the same time,
+the CPU time is the sum of the usage times for each of the cores.
+
+Note that for technical reasons,
+enforcement of time limits is not perfectly exact:
+The tool might run for about a second longer than the time limit specifies.
+If the tool terminates by itself within this time span,
+BenchExec will still count this as a timeout in its `status` value.
 
 
 ## Wall Time

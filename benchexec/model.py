@@ -5,7 +5,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import collections
+import collections.abc
 import logging
 import os
 import re
@@ -31,9 +31,9 @@ WALLTIMELIMIT = "walltimelimit"
 _BYTE_FACTOR = 1000  # byte in kilobyte
 
 _ERROR_RESULTS_FOR_TERMINATION_REASON = {
-    "cputime": "TIMEOUT",
-    "cputime-soft": "TIMEOUT",
-    "walltime": "TIMEOUT",
+    "cputime": result.RESULT_TIMEOUT,
+    "cputime-soft": result.RESULT_TIMEOUT,
+    "walltime": result.RESULT_TIMEOUT,
     "memory": "OUT OF MEMORY",
     "killed": "KILLED",
     "failed": "FAILED",
@@ -126,7 +126,7 @@ def handle_files_from_task_definition(patterns, task_def_file):
     if patterns is None:
         return []
     result = []
-    if isinstance(patterns, str) or not isinstance(patterns, collections.Iterable):
+    if isinstance(patterns, str) or not isinstance(patterns, collections.abc.Iterable):
         # accept single string in addition to list of strings
         patterns = [patterns]
     for pattern in patterns:
@@ -542,6 +542,7 @@ class RunSet(object):
         self.blocks = self.extract_runs_from_xml(
             globalSourcefilesTags + rundefinitionTag.findall("tasks"),
             required_files_pattern,
+            self.real_name,
         )
         self.runs = [run for block in self.blocks for run in block.runs]
 
@@ -564,7 +565,7 @@ class RunSet(object):
                 base = os.path.basename(run.identifier)
                 if base in sourcefilesSet:
                     logging.warning(
-                        "Input file with name '%s' appears twice in runset. "
+                        "Input file with name '%s' appears twice in run definition. "
                         "This could cause problems with equal logfile-names.",
                         base,
                     )
@@ -578,7 +579,9 @@ class RunSet(object):
             for run_definition in self.benchmark.config.selected_run_definitions
         )
 
-    def extract_runs_from_xml(self, sourcefilesTagList, global_required_files_pattern):
+    def extract_runs_from_xml(
+        self, sourcefilesTagList, global_required_files_pattern, rundef_name
+    ):
         """
         This function builds a list of SourcefileSets (containing filename with options).
         The files and their options are taken from the list of sourcefilesTags.
@@ -659,8 +662,9 @@ class RunSet(object):
                     for sourcefile_set in blocks
                 ):
                     logging.warning(
-                        'The selected tasks "%s" are not present in the input file, '
-                        "skipping them.",
+                        'For run definition "%s" the selected tasks "%s" '
+                        "do not exist in the benchmark definition, skipping them.",
+                        rundef_name,
                         selected,
                     )
         return blocks
@@ -1145,7 +1149,7 @@ class Run(object):
             # Termination reason was not fully precise for timeouts, so we double check
             # the consumed time against the limits. Since removal of ulimit time limit
             # this should not be necessary, but also does not harm.
-            status = "TIMEOUT"
+            status = result.RESULT_TIMEOUT
         elif termination_reason:
             status = _ERROR_RESULTS_FOR_TERMINATION_REASON.get(
                 termination_reason, termination_reason

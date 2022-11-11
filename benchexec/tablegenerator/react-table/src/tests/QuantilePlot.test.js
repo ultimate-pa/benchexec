@@ -10,7 +10,6 @@ import QuantilePlot from "../components/QuantilePlot.js";
 import Overview from "../components/Overview";
 import renderer from "react-test-renderer";
 import { setParam } from "../utils/utils";
-import { getPlotOptions } from "./utils.js";
 const fs = require("fs");
 
 const testDir = "../test_integration/expected/";
@@ -32,7 +31,7 @@ files
       // Fixed width and height because the FlexibleXYPlot doesn't work well with the react-test-renderer
       const quantilePlotJSX = (
         <QuantilePlot
-          table={overviewInstance.state.table}
+          table={overviewInstance.state.tableData}
           tools={overviewInstance.state.tools}
           preSelection={overviewInstance.state.quantilePreSelection}
           getRowName={overviewInstance.getRowName}
@@ -58,7 +57,7 @@ files
             toString: () => "runset",
           })),
         );
-      const resultOptions = getPlotOptions(plot, "Results");
+      const resultOptions = Object.values(plotInstance.resultsOptions);
 
       // Array of pairs of selection and shown results as test data
       const selectionResultInput = selectionOptions.flatMap((selection) =>

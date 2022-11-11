@@ -8,7 +8,7 @@
 import React from "react";
 import FilterContainer from "./FilterContainer";
 import TaskFilterCard from "./TaskFilterCard";
-import { faTimes, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faClose, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import equals from "deep-equal";
 import { isNil } from "../../utils/utils";
@@ -103,8 +103,11 @@ export default class FilterBox extends React.PureComponent {
         .flat(3)
         .filter((i) => i !== null && i !== undefined),
     ];
-    newFilter.push({ id: "id", values: idFilter });
+    if (idFilter && idFilter.length > 0) {
+      newFilter.push({ id: "id", values: idFilter });
+    }
 
+    this.props.addTypeToFilter(newFilter);
     this.props.setFilter(newFilter, true);
   }
 
@@ -140,7 +143,7 @@ export default class FilterBox extends React.PureComponent {
       >
         <div className="filterBox--header">
           <FontAwesomeIcon
-            icon={faTimes}
+            icon={faClose}
             className="filterBox--header--icon"
             onClick={this.props.hide}
           />

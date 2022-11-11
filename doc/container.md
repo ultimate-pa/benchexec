@@ -175,6 +175,34 @@ For `benchexec`, the patterns are given within `<resultfiles>` tags
 in the benchmark-definition XML file,
 and the result files are placed in a directory besides the result XML file.
 
+## Using BenchExec in a Docker/Podman Container
+
+It is possible to use BenchExec inside other container environments,
+but we strongly recommend to use [Podman](https://podman.io/)
+(which is compatible with Docker)
+because it provides "rootless" containers
+(containers started as a regular user without sudo just like BenchExec containers).
+To use BenchExec within Podman,
+start it as a regular user (not root) and use the following arguments:
+```
+podman run --security-opt unmask=/proc/* --security-opt seccomp=unconfined ...
+```
+You may additionally need the arguments documented for
+[cgroup usage](INSTALL.md#setting-up-cgroups-in-a-dockerpodman-container).
+
+Using Docker is also possible, but only using the `--privileged` argument.
+However, this gives your Docker container *full root access* to the host,
+so please also add the `--cap-drop=all` flag,
+make sure to use this only with trusted images,
+and configure your Docker container such that everything in it
+is executed under a different user account, not as root.
+BenchExec is not designed to run as root and does not provide
+any safety guarantees regarding its container under this circumstances.
+<!--
+In principle, `--security-opt systempaths=unconfined --security-opt seccomp=unconfined`
+should also be sufficient as Docker arguments,
+but then mounting within the container still fails.
+-->
 
 ## Common Problems
 
@@ -208,6 +236,17 @@ For this you need either Ubuntu or kernel version 5.11 or newer.
 Alternatively, if you cannot use either,
 you can use a different access mode for directories, e.g., with `--read-only-dir /`.
 If some directories need to be writable, specify other directory modes for these directories as described above.
+
+#### `Failed to configure container: [Errno 22] Creating overlay mount for '...' failed: Invalid argument`
+Your kernel does not allow mounting an overlay filesystem in this place.
+Often an explanation appears in the system log,
+so check for error messages with `journalctl -e -k -g overlayfs`.
+
+One known problem is [this kernel regression](https://github.com/sosy-lab/benchexec/issues/776),
+which prevents overlays from being used if there is another mountpoint somewhere below the target directory.
+Another limitation of the kernel is that one can only nest overlays twice,
+so if you want to run a container inside a container inside a container,
+at least one of these needs to use a non-overlay mode for this path.
 
 #### `Cannot change into working directory inside container: [Errno 2] No such file or directory`
 Either you have specified an invalid directory as working directory with `--dir`,

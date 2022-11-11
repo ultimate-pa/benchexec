@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 
+from benchexec import BenchExecException
 from benchexec import systeminfo
 from benchexec import util
 
@@ -56,23 +57,26 @@ ALL_KNOWN_SUBSYSTEMS = {
     "pids",
 }
 
+CGROUPS_V1 = 1
+CGROUPS_V2 = 2
+
 _PERMISSION_HINT_GROUPS = """
 You need to add your account to the following groups: {0}
 Remember to logout and login again afterwards to make group changes effective."""
 
 _PERMISSION_HINT_DEBIAN = """
 The recommended way to fix this is to install the Debian package for BenchExec and add your account to the group "benchexec":
-https://github.com/sosy-lab/benchexec/blob/master/doc/INSTALL.md#debianubuntu
+https://github.com/sosy-lab/benchexec/blob/main/doc/INSTALL.md#debianubuntu
 Alternatively, you can install benchexec-cgroup.service manually:
-https://github.com/sosy-lab/benchexec/blob/master/doc/INSTALL.md#setting-up-cgroups-on-machines-with-systemd"""
+https://github.com/sosy-lab/benchexec/blob/main/doc/INSTALL.md#setting-up-cgroups-on-machines-with-systemd"""
 
 _PERMISSION_HINT_SYSTEMD = """
 The recommended way to fix this is to add your account to a group named "benchexec" and install benchexec-cgroup.service:
-https://github.com/sosy-lab/benchexec/blob/master/doc/INSTALL.md#setting-up-cgroups-on-machines-with-systemd"""
+https://github.com/sosy-lab/benchexec/blob/main/doc/INSTALL.md#setting-up-cgroups-on-machines-with-systemd"""
 
 _PERMISSION_HINT_OTHER = """
 Please configure your system in way to allow your user to use cgroups:
-https://github.com/sosy-lab/benchexec/blob/master/doc/INSTALL.md#setting-up-cgroups-on-machines-without-systemd"""
+https://github.com/sosy-lab/benchexec/blob/main/doc/INSTALL.md#setting-up-cgroups-on-machines-without-systemd"""
 
 _ERROR_MSG_PERMISSIONS = """
 Required cgroups are not available because of missing permissions.{0}
@@ -81,9 +85,45 @@ As a temporary workaround, you can also run
 "sudo chmod o+wt {1}"
 Note that this will grant permissions to more users than typically desired and it will only last until the next reboot."""
 
+_ERROR_MSG_CGROUPS_V2 = """
+Required cgroups are not available because this system is using cgroupsv2 exclusively.
+
+This version of BenchExec does not yet support cgroupsv2.
+Please check at https://github.com/sosy-lab/benchexec/issues/133
+whether a new version of BenchExec with support for cgroupsv2 is available
+and update if applicable.
+
+Alternatively, you could try switching back to cgroupsv1
+with the kernel command-line parameter systemd.unified_cgroup_hierarchy=0
+or use BenchExec without the features that need cgroups
+(i.e., disable cpu-time limit, memory limit, and core limit).
+"""
+
 _ERROR_MSG_OTHER = """
 Required cgroups are not available.
 If you are using BenchExec within a container, please make "/sys/fs/cgroup" available."""
+
+
+def _get_cgroup_version():
+    version = None
+    try:
+        with open("/proc/mounts") as mountsFile:
+            for mount in mountsFile:
+                mount = mount.split(" ")
+                if mount[2] == "cgroup":
+                    version = CGROUPS_V1
+
+                # only set v2 if it's the only active mount
+                # we don't support crippled hybrid mode
+                elif mount[2] == "cgroup2" and version != CGROUPS_V1:
+                    version = CGROUPS_V2
+
+            if version is None:
+                raise BenchExecException("Could not detect Cgroup Version")
+    except OSError:
+        logging.exception("Cannot read /proc/mounts")
+
+    return version
 
 
 def find_my_cgroups(cgroup_paths=None, fallback=True):
@@ -175,7 +215,19 @@ def _parse_proc_pid_cgroup(content):
             yield (subsystem, path)
 
 
-def kill_all_tasks_in_cgroup(cgroup, ensure_empty=True):
+def _force_open_read(filename):
+    """
+    Open a file for reading even if we have no read permission,
+    as long as we can grant it to us.
+    """
+    try:
+        return open(filename, "rt")
+    except OSError:
+        os.chmod(filename, stat.S_IRUSR)
+        return open(filename, "rt")
+
+
+def kill_all_tasks_in_cgroup(cgroup):
     tasksFile = os.path.join(cgroup, "tasks")
 
     i = 0
@@ -185,7 +237,7 @@ def kill_all_tasks_in_cgroup(cgroup, ensure_empty=True):
         # SIGKILL. We added this loop when killing sub-processes was not reliable
         # and we did not know why, but now it is reliable.
         for sig in [signal.SIGKILL, signal.SIGINT, signal.SIGTERM]:
-            with open(tasksFile, "rt") as tasks:
+            with _force_open_read(tasksFile) as tasks:
                 task = None
                 for task in tasks:
                     task = task.strip()
@@ -200,7 +252,7 @@ def kill_all_tasks_in_cgroup(cgroup, ensure_empty=True):
                         )
                     util.kill_process(int(task), sig)
 
-                if task is None or not ensure_empty:
+                if task is None:
                     return  # No process was hanging, exit
             # wait for the process to exit, this might take some time
             time.sleep(i * 0.5)
@@ -356,6 +408,8 @@ class Cgroup(object):
             paths = " ".join(map(util.escape_string_shell, paths))
             sys.exit(_ERROR_MSG_PERMISSIONS.format(permission_hint, paths))
 
+        elif _get_cgroup_version() == CGROUPS_V2:
+            sys.exit(_ERROR_MSG_CGROUPS_V2)
         else:
             sys.exit(_ERROR_MSG_OTHER)  # e.g., subsystem not mounted
 
@@ -384,7 +438,8 @@ class Cgroup(object):
             # (otherwise we can't add any tasks)
             def copy_parent_to_child(name):
                 shutil.copyfile(
-                    os.path.join(parentCgroup, name), os.path.join(cgroup, name)
+                    os.path.join(parentCgroup, name),  # noqa: B023
+                    os.path.join(cgroup, name),  # noqa: B023
                 )
 
             try:
@@ -420,17 +475,40 @@ class Cgroup(object):
         Kill all tasks in this cgroup and all its children cgroups forcefully.
         Additionally, the children cgroups will be deleted.
         """
+        # In this method we should attempt to guard against child cgroups
+        # that have been created and manipulated by processes in the run.
+        # For example, they could have removed permissions from files and directories.
 
-        def kill_all_tasks_in_cgroup_recursively(cgroup, delete):
-            for dirpath, dirs, _files in os.walk(cgroup, topdown=False):
-                for subCgroup in dirs:
-                    subCgroup = os.path.join(dirpath, subCgroup)
-                    kill_all_tasks_in_cgroup(subCgroup, ensure_empty=delete)
+        def recursive_child_cgroups(cgroup):
+            def raise_error(e):
+                raise e
 
-                    if delete:
-                        remove_cgroup(subCgroup)
+            try:
+                for dirpath, dirs, _files in os.walk(
+                    cgroup, topdown=False, onerror=raise_error
+                ):
+                    for subCgroup in dirs:
+                        yield os.path.join(dirpath, subCgroup)
+            except OSError as e:
+                # some process might have made a child cgroup inaccessible
+                os.chmod(e.filename, stat.S_IRUSR | stat.S_IXUSR)
+                # restart, which might yield already yielded cgroups again,
+                # but this is ok for the callers of recursive_child_cgroups()
+                yield from recursive_child_cgroups(cgroup)
 
-            kill_all_tasks_in_cgroup(cgroup, ensure_empty=delete)
+        def try_unfreeze(cgroup):
+            freezer_file = os.path.join(cgroup, "freezer.state")
+            try:
+                util.write_file("THAWED", freezer_file)
+            except OSError:
+                # Somebody could have fiddle with permissions, try to set them.
+                # If we are not owner, this also fails, but then there is nothing we
+                # can do. But the processes inside the run cannot change the owner.
+                try:
+                    os.chmod(freezer_file, stat.S_IRUSR | stat.S_IWUSR)
+                    util.write_file("THAWED", freezer_file)
+                except OSError:
+                    pass
 
         # First, we go through all cgroups recursively while they are frozen and kill
         # all processes. This helps against fork bombs and prevents processes from
@@ -441,16 +519,29 @@ class Cgroup(object):
         if FREEZER in self.per_subsystem:
             cgroup = self.per_subsystem[FREEZER]
             freezer_file = os.path.join(cgroup, "freezer.state")
-
             util.write_file("FROZEN", freezer_file)
-            kill_all_tasks_in_cgroup_recursively(cgroup, delete=False)
+
+            for child_cgroup in recursive_child_cgroups(cgroup):
+                with _force_open_read(os.path.join(child_cgroup, "tasks")) as tasks:
+                    for task in tasks:
+                        util.kill_process(int(task))
+
+                # This cgroup could be frozen, which would prevent processes from being
+                # killed and would lead to an endless loop below. cf.
+                # https://github.com/sosy-lab/benchexec/issues/840
+                try_unfreeze(child_cgroup)
+
             util.write_file("THAWED", freezer_file)
 
         # Second, we go through all cgroups again, kill what is left,
         # check for emptiness, and remove subgroups.
         # Furthermore, we do this for all hierarchies, not only the one with freezer.
         for cgroup in self.paths:
-            kill_all_tasks_in_cgroup_recursively(cgroup, delete=True)
+            for child_cgroup in recursive_child_cgroups(cgroup):
+                kill_all_tasks_in_cgroup(child_cgroup)
+                remove_cgroup(child_cgroup)
+
+            kill_all_tasks_in_cgroup(cgroup)
 
     def has_value(self, subsystem, option):
         """

@@ -30,6 +30,9 @@ The meanings of the current possible result values are as follows:
   If missing, the run terminated itself without intervention from BenchExec.
   Possible values are currently:
   - `cputime`: CPU-time limit was violated and run was killed.
+     Note that if the tool terminates by itself after the time limit but before BenchExec had a chance to kill it,
+     this value will not be set as `terminationreason` indicates only whether the run was forcefully killed,
+     not whether a limit was exceeded.
   - `cputime-soft`: Soft CPU-time limit was violated and run stopped itself afterwards.
   - `walltime`: Wall-time limit was violated and run was killed.
   - `memory`: Memory limit was violated and run was killed.
@@ -75,7 +78,7 @@ the start time is stored as local time with time zone in ISO 8601 format.
 ### Additional Results of benchexec
 `benchexec` additionally uses the following result values:
 - **category**: One of the values of the `CATEGORY_*` constants of the
-    [`result` module](https://github.com/sosy-lab/benchexec/blob/master/benchexec/result.py)
+    [`result` module](https://github.com/sosy-lab/benchexec/blob/main/benchexec/result.py)
     that determines how the run result should be interpreted
     (cf. the documentation of these constants).
     Note that the distinction between `CATEGORY_UNKNOWN` and `CATEGORY_ERROR`
@@ -87,7 +90,7 @@ the start time is stored as local time with time zone in ISO 8601 format.
 - **status**: The result of the run, as determined by BenchExec
     and interpreted by the tool-info module.
     This can be one of the `RESULT_*` constants of the
-    [`result` module](https://github.com/sosy-lab/benchexec/blob/master/benchexec/result.py),
+    [`result` module](https://github.com/sosy-lab/benchexec/blob/main/benchexec/result.py),
     or an arbitrary string.
     If the `category` is `CATEGORY_CORRECT`, `CATEGORY_WRONG`,
     `CATEGORY_UNKNOWN`, or `CATEGORY_MISSING`,

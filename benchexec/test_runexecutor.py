@@ -47,7 +47,7 @@ class TestRunExecutor(unittest.TestCase):
         with self.skip_if_logs(
             "Cannot reliably kill sub-processes without freezer cgroup"
         ):
-            self.runexecutor = RunExecutor(use_namespaces=False, *args, **kwargs)
+            self.runexecutor = RunExecutor(*args, use_namespaces=False, **kwargs)
 
     @contextlib.contextmanager
     def skip_if_logs(self, error_msg):
@@ -792,6 +792,58 @@ class TestRunExecutor(unittest.TestCase):
         self.assertLessEqual(before, run_starttime)
         self.assertLessEqual(run_starttime, after)
 
+    def test_frozen_process(self):
+        # https://github.com/sosy-lab/benchexec/issues/840
+        if not os.path.exists("/bin/sleep"):
+            self.skipTest("missing /bin/sleep")
+        if not os.path.exists("/sys/fs/cgroup/freezer"):
+            self.skipTest("missing freezer cgroup")
+        self.setUp(
+            dir_modes={
+                "/": containerexecutor.DIR_READ_ONLY,
+                "/home": containerexecutor.DIR_HIDDEN,
+                "/tmp": containerexecutor.DIR_HIDDEN,
+                "/sys/fs/cgroup": containerexecutor.DIR_FULL_ACCESS,
+            }
+        )
+        (result, output) = self.execute_run(
+            "/bin/sh",
+            "-c",
+            """#!/bin/sh
+# create process, move it to sub-cgroup, and freeze it
+set -eu
+
+cgroup="/sys/fs/cgroup/freezer/$(grep freezer /proc/self/cgroup | cut -f 3 -d :)"
+mkdir "$cgroup/tmp"
+
+sleep 10 &
+child_pid=$!
+
+echo $child_pid > "$cgroup/tmp/tasks"
+echo FROZEN > "$cgroup/tmp/freezer.state"
+# remove permissions in order to test our handling of this case
+chmod 000 "$cgroup/tmp/freezer.state"
+chmod 000 "$cgroup/tmp/tasks"
+chmod 000 "$cgroup/tmp"
+echo FROZEN
+wait $child_pid
+""",
+            walltimelimit=1,
+            expect_terminationreason="walltime",
+        )
+        self.check_exitcode(result, 9, "exit code of killed process is not 9")
+        self.assertAlmostEqual(
+            result["walltime"],
+            2,
+            delta=0.5,
+            msg="walltime is not approximately the time after which the process should have been killed",
+        )
+        self.assertEqual(
+            output[-1],
+            "FROZEN",
+            "run output misses command output and was not executed properly",
+        )
+
 
 class TestRunExecutorWithContainer(TestRunExecutor):
     def setUp(self, *args, **kwargs):
@@ -810,7 +862,7 @@ class TestRunExecutorWithContainer(TestRunExecutor):
         )
 
         self.runexecutor = RunExecutor(
-            use_namespaces=True, dir_modes=dir_modes, *args, **kwargs
+            *args, use_namespaces=True, dir_modes=dir_modes, **kwargs
         )
 
     def get_runexec_cmdline(self, *args, **kwargs):
@@ -979,6 +1031,24 @@ class TestRunExecutorWithContainer(TestRunExecutor):
             ],
         )
 
+    def test_result_file_log_limit(self):
+        file_count = containerexecutor._MAX_RESULT_FILE_LOG_COUNT + 10
+        with self.assertLogs(level=logging.DEBUG) as log:
+            # Check that all output files are transferred ...
+            self.check_result_files(
+                f"for i in $(seq 1 {file_count}); do touch $i; done",
+                ["*"],
+                list(map(str, range(1, file_count + 1))),
+            )
+        # ... but not all output files are logged ...
+        self.assertEqual(
+            len([msg for msg in log.output if "Transferring output file" in msg]),
+            containerexecutor._MAX_RESULT_FILE_LOG_COUNT,
+        )
+        # ... and the final count is correct.
+        count_msg = next(msg for msg in log.output if " output files matched" in msg)
+        self.assertIn(f"{file_count} output files matched", count_msg)
+
     def test_file_count_limit(self):
         if not os.path.exists("/bin/sh"):
             self.skipTest("missing /bin/sh")
@@ -1093,7 +1163,7 @@ class TestRunExecutorUnits(unittest.TestCase):
 # An error report file with more information is saved as:
 # {report_file.name}
 More output
-""".encode()
+""".encode()  # noqa: E800 false alarm
                 report_content = b"Report output\nMore lines"
                 output_content += invalid_utf8
                 report_content += invalid_utf8

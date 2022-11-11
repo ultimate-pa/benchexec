@@ -12,7 +12,7 @@ other base classes are provided for compatibility with older tool-info modules.
 The class that a tool-info module provides always has to have the name "Tool".
 
 For more information, please refer to
-https://github.com/sosy-lab/benchexec/blob/master/doc/tool-integration.md
+https://github.com/sosy-lab/benchexec/blob/main/doc/tool-integration.md
 """
 
 from abc import ABCMeta, abstractmethod
@@ -55,13 +55,16 @@ class BaseTool2(object, metaclass=ABCMeta):
 
     BenchExec will then instantiate the tool-info module's class
     and call the methods that return general information about the tool first.
-    Afterwards, the run-specific methods will be called.
+    In this phase, executable() will always be called, other methods may be called.
+    Afterwards, the run-specific methods will be called,
+    and for each run, cmdline() will always be called before determine_result().
     Apart from this, no guarantee is made about which methods are called
     and in which order. In particular, the class must not assume that determine_result()
     will be called for a run result immediately after cmdline() was called for that run.
     It is guaranteed, however, that one instance of the class will only be used for
-    one instance of the tool (in one location), so for example the result from version()
-    may be stored in an attribute and other methods can safely rely on this.
+    one instance of the tool (in one location), so for example executable() can store
+    some information about the tool (e.g., its version) in an attribute
+    and other methods can safely rely on this.
 
     In special circumstances, it can make sense to not inherit from this class.
     In such cases the tool-info module's class needs to implement all the methods
@@ -72,14 +75,14 @@ class BaseTool2(object, metaclass=ABCMeta):
 
     This class is supported since BenchExec 3.3.
     For older tool-info modules that still inherit from BaseTool we provide a
-    [migration guide](https://github.com/sosy-lab/benchexec/blob/master/doc/tool-integration.md#migrating-tool-info-modules-to-new-api).
+    [migration guide](https://github.com/sosy-lab/benchexec/blob/main/doc/tool-integration.md#migrating-tool-info-modules-to-new-api).
     """
 
     REQUIRED_PATHS = []
     """
     List of path patterns that is used by the default implementation of program_files().
     Not necessary if this method is overwritten.
-    """
+    """  # noqa: B018"
 
     # Methods that provide general (run-independent) information about the tool
 
@@ -518,7 +521,7 @@ class BaseTool2(object, metaclass=ABCMeta):
             (contains return code or the signal that led to termination)
         @param output: the output of the tool as instance of class RunOutput
         @param termination_reason: reason why BenchExec terminated the run, if any
-            (cf. https://github.com/sosy-lab/benchexec/blob/master/doc/run-results.md,
+            (cf. https://github.com/sosy-lab/benchexec/blob/main/doc/run-results.md,
             useful to distinguish between program killed because of error and timeout)
         """
 
@@ -597,14 +600,14 @@ class BaseTool(object):
     Note that tool-info modules that inherit from this class cannot make use of all of
     BenchExec's features and that we may drop support for such modules in BenchExec 4.0.
     It is thus recommended to upgrade all such tool-info modules to BaseTool2, cf. our
-    [migration guide](https://github.com/sosy-lab/benchexec/blob/master/doc/tool-integration.md#migrating-tool-info-modules-to-new-api).
+    [migration guide](https://github.com/sosy-lab/benchexec/blob/main/doc/tool-integration.md#migrating-tool-info-modules-to-new-api).
     """
 
     REQUIRED_PATHS = []
     """
     List of path patterns that is used by the default implementation of program_files().
     Not necessary if this method is overwritten.
-    """
+    """  # noqa: B018
 
     def executable(self):
         """
