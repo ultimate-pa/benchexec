@@ -306,6 +306,7 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
             TaskFilesConsidered.INPUT_FILES,
         )
 
+        cmdline += self._get_task_cmd_options(task, options)
         cmdline += witness_options
         cmdline += options
 
@@ -325,6 +326,7 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
             TaskFilesConsidered.INPUT_FILES,
         )
 
+        cmdline += self._get_task_cmd_options(task, options)
         cmdline += witness_options
         if task.input_files_or_empty:
             cmdline += ["--file", *input_files]
@@ -334,9 +336,10 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
 
     def _cmdline_svcomp17(self, executable, options, task):
         cmdline = [executable, task.property_file]
-        cmdline += [
+        filtered_options = [
             option for option in options if option not in _SVCOMP17_FORBIDDEN_FLAGS
         ]
+        cmdline += filtered_options
         cmdline.append("--full-output")
 
         input_files, witness_options = handle_witness_of_task(
@@ -346,10 +349,27 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
             TaskFilesConsidered.INPUT_FILES,
         )
 
+        cmdline += self._get_task_cmd_options(task, filtered_options)
         cmdline += witness_options
         cmdline += input_files
         self.__assert_cmdline(cmdline, "SVCOMP17")
         return cmdline
+
+    def _get_task_cmd_options(self, task, existing_options):
+        if not task.options:
+            return []
+        task_options = []
+        for plugin, settings in task.options.items():
+            if plugin.startswith("de.uni_freiburg.informatik.ultimate."):
+                prefix = plugin.split(".")[-1]
+                for setting, value in settings.items():
+                    # The same conversion from human-readable setting names to parameters is performed by Ultimate.
+                    name = "--" + re.sub(r"[ ()\"'.]+", ".", (prefix + " " + setting).replace(":", "")).lower().strip(".")
+
+                    # Avoid duplicating options (values in benchexec XML take precedence).
+                    if name not in existing_options:
+                        task_options += [name, str(value)]
+        return task_options
 
     @staticmethod
     def __assert_cmdline(cmdline, mode):
