@@ -495,10 +495,13 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
 
     def get_value_from_output(self, output, identifier):
         regex = re.compile(identifier)
+        values = []
         for line in output:
             match = regex.search(line)
             if match and len(match.groups()) > 0:
-                return match.group(1)
+                values.append(match.group(1))
+        if len(values) > 0:
+            return str(sum([ float(x.strip()) if '.' in x else int(x.strip()) for x in values ]))
         logging.debug("Did not find a match with regex %s", identifier)
         return None
 

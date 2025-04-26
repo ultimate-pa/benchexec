@@ -128,6 +128,8 @@ class Column(object):
         scale_factor=None,
         relevant_for_diff=None,
         display_title=None,
+        denominator=None,
+        copy=None,
     ):
         with decimal.localcontext(DECIMAL_CONTEXT):
 
@@ -157,6 +159,9 @@ class Column(object):
 
             # expected maximum width (in characters)
             self.max_width = None
+
+        self.denominator = denominator
+        self.copy = copy
 
     def is_numeric(self):
         return (
