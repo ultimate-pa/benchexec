@@ -17,6 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 import os
 
 import benchexec.result as result
@@ -67,9 +68,11 @@ class Tool(benchexec.tools.template.BaseTool2):
                 return "Terminated by {}".format(exit_code.signal)
             return result.RESULT_UNKNOWN
         last_line = output[-1:][0]
-        if any(s in last_line for s in ["YES", "TRUE", "Termination successfully shown!"]):
+        if any(
+            s in last_line for s in ["YES", "TRUE", "Termination successfully shown!"]
+        ):
             return result.RESULT_TRUE_PROP
-        elif any(s in last_line for s in ["FALSE","NO"]):
+        elif any(s in last_line for s in ["FALSE", "NO"]):
             return result.RESULT_FALSE_TERMINATION
         else:
             return last_line

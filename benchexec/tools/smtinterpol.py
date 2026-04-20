@@ -12,6 +12,7 @@ import benchexec.tools.smtlib2
 import logging
 import json
 
+
 class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
     """
     Tool info for SMTInterpol.
@@ -44,26 +45,28 @@ class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
         try:
             val = json.loads(identifier)
         except json.decoder.JSONDecodeError as ex:
-            raise AssertionError(f'Invalid JSON: "{identifier}". Should be {{ "Type" : "<FirstMatch>|<LastMatch>", "Expr": "<regexp>" }}')
+            raise AssertionError(
+                f'Invalid JSON: "{identifier}". Should be {{ "Type" : "<FirstMatch>|<LastMatch>", "Expr": "<regexp>" }}'
+            )
 
-        mode = val.get('Type','FirstMatch')
-        expr = val['Expr']
-        if 'FirstMatch' == mode:
+        mode = val.get("Type", "FirstMatch")
+        expr = val["Expr"]
+        if "FirstMatch" == mode:
             return self._get_value_from_output_regex(mode, output, expr)
-        elif 'LastMatch' == mode:
+        elif "LastMatch" == mode:
             return self._get_value_from_output_regex(mode, reversed(output), expr)
         else:
             raise AssertionError(f"Unknown column mode {mode}")
 
     def _get_value_from_output_regex(self, mode, output, expr):
         regex = re.compile(expr)
-        i=0
+        i = 0
         for line in output:
-            i=i+1
+            i = i + 1
             match = regex.search(line)
             if match and len(match.groups()) > 0:
                 return match.group(1)
-        logging.debug(f"Did not find a match with regex {expr} and mode {mode} in {i} lines")
+        logging.debug(
+            f"Did not find a match with regex {expr} and mode {mode} in {i} lines"
+        )
         return None
-    
-
