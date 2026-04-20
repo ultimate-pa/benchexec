@@ -44,7 +44,7 @@ class Tool(benchexec.tools.smtlib2.Smtlib2Tool):
     def get_value_from_output(self, output, identifier):
         try:
             val = json.loads(identifier)
-        except json.decoder.JSONDecodeError as ex:
+        except json.decoder.JSONDecodeError:
             raise AssertionError(
                 f'Invalid JSON: "{identifier}". Should be {{ "Type" : "<FirstMatch>|<LastMatch>", "Expr": "<regexp>" }}'
             )

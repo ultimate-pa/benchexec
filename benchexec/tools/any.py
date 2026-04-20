@@ -30,7 +30,6 @@ import os
 
 import benchexec.result as result
 import benchexec.tools.template
-import benchexec.util as util
 
 
 class MissingEnvironmentVariable(benchexec.BenchExecException):
