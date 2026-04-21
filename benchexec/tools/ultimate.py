@@ -76,7 +76,7 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
         exe = tool_locator.find_executable("Ultimate.py")
         dir_name = Path(os.path.dirname(exe))
         logging.debug("Checking if %s contains a launcher jar", dir_name)
-        if list(dir_name.glob(_JAR_LAUNCHER_PATTERN)):
+        if any(dir_name.glob(_JAR_LAUNCHER_PATTERN)):
             return exe
         msg = (
             f"ERROR: Did find a Ultimate.py in {os.path.dirname(exe)} "
@@ -164,14 +164,12 @@ class UltimateTool(benchexec.tools.template.BaseTool2):
     @functools.lru_cache
     def _get_current_launcher_jar(self, executable):
         ultimate_dir = os.path.dirname(executable)
-        launcher_candidates = glob.glob(
-            os.path.join(ultimate_dir, _JAR_LAUNCHER_PATTERN)
-        )
+        launcher_candidates = glob(_JAR_LAUNCHER_PATTERN, root_dir=ultimate_dir)
         if not launcher_candidates:
             raise FileNotFoundError(f"No suitable launcher jar found in {ultimate_dir}")
         if len(launcher_candidates) > 1:
             raise FileNotFoundError(f"Multiple launcher jars found in {ultimate_dir}")
-        return launcher_candidates[0]
+        return os.path.join(ultimate_dir, launcher_candidates[0])
 
     @functools.lru_cache
     def version(self, executable):
