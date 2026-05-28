@@ -10,13 +10,11 @@
 """
 
 import ctypes as _ctypes
-from ctypes import c_int, c_uint32, c_long, c_ulong, c_size_t, c_char_p, c_void_p
+from ctypes import c_int, c_uint32, c_ulong, c_char_p, c_void_p
 import os as _os
 
 _libc = _ctypes.CDLL("libc.so.6", use_errno=True)
 """Reference to standard C library."""
-_libc_with_gil = _ctypes.PyDLL("libc.so.6", use_errno=True)
-"""Reference to standard C library, and we hold the GIL during all function calls."""
 
 
 def _check_errno(result, func, arguments):
@@ -40,31 +38,6 @@ def _check_errno(result, func, arguments):
     return result
 
 
-# off_t is a signed integer type required for mmap.
-# In my tests it is equal to long on both 32bit and 64bit x86 Linux.
-c_off_t = c_long
-
-clone = _libc_with_gil.clone  # Important to have GIL, cf. container.py!
-"""Create copy of current process, similar to fork()."""
-CLONE_CALLBACK = _ctypes.CFUNCTYPE(c_int, c_void_p)
-"""Type use for callback functions of clone, can be used as decorator."""
-clone.argtypes = [
-    CLONE_CALLBACK,
-    c_void_p,
-    c_int,
-    c_void_p,
-]  # fn, child_stack, flags, arg (varargs omitted)
-clone.errcheck = _check_errno
-
-# /usr/include/linux/sched.h
-CLONE_NEWNS = 0x00020000
-CLONE_NEWCGROUP = 0x02000000
-CLONE_NEWUTS = 0x04000000
-CLONE_NEWIPC = 0x08000000
-CLONE_NEWUSER = 0x10000000
-CLONE_NEWPID = 0x20000000
-CLONE_NEWNET = 0x40000000
-
 unshare = _libc.unshare
 """Put current process into new namespace(s)."""
 unshare.argtypes = [c_int]
@@ -74,47 +47,6 @@ setns = _libc.setns
 """Set the current process namespace(s)."""
 setns.argtypes = [c_int, c_int]
 setns.errcheck = _check_errno
-
-mmap = _libc.mmap
-"""Map file into memory."""
-mmap.argtypes = [
-    c_void_p,
-    c_size_t,
-    c_int,
-    c_int,
-    c_int,
-    c_off_t,
-]  # addr, length, prot, flags, fd, offset
-mmap.restype = c_void_p
-mmap.errcheck = _check_errno
-
-
-def mmap_anonymous(length, prot, flags=0):
-    """Allocate anonymous memory with mmap. Length must be multiple of page size."""
-    return mmap(None, length, prot, flags | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)
-
-
-munmap = _libc.munmap
-"""Free mmap()ed memory."""
-munmap.argtypes = [c_void_p, c_size_t]
-munmap.errcheck = _check_errno
-
-mprotect = _libc.mprotect
-"""Set protection on a region of memory."""
-mprotect.argtypes = [c_void_p, c_size_t, c_int]  # addr, length, prot
-mprotect.errcheck = _check_errno
-
-PROT_NONE = 0x0  # /usr/include/bits/mman-linux.h
-MAP_GROWSDOWN = 0x00100  # /usr/include/bits/mman.h
-MAP_STACK = 0x20000  # /usr/include/bits/mman.h
-from mmap import (  # noqa: F401 E402
-    PROT_EXEC,
-    PROT_READ,
-    PROT_WRITE,
-    MAP_ANONYMOUS,
-    MAP_PRIVATE,
-)  # @UnusedImport imported for users of this module
-
 
 mount = _libc.mount
 """Mount a filesystem."""

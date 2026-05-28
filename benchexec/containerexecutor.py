@@ -35,7 +35,6 @@ from benchexec.container import (
     DIR_READ_ONLY,
     DIR_OVERLAY,
     DIR_FULL_ACCESS,
-    NATIVE_CLONE_CALLBACK_SUPPORTED,
 )
 
 sys.dont_write_bytecode = True  # prevent creation of .pyc files
@@ -394,12 +393,6 @@ class ContainerExecutor(baseexecutor.BaseExecutor):
             logging.info(
                 "LXCFS is not available, some host information like the uptime"
                 " and the total number of CPU cores leaks into the container."
-            )
-
-        if not NATIVE_CLONE_CALLBACK_SUPPORTED:
-            logging.debug(
-                "Using a non-robust fallback for clone callback. If you have many "
-                "threads please read https://github.com/sosy-lab/benchexec/issues/435"
             )
 
         self._cgroups = Cgroups.dummy()

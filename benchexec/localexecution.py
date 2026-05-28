@@ -197,14 +197,6 @@ def _execute_run_set(
         with unfinished_runs_lock:
             unfinished_runs -= 1
 
-    if not containerexecutor.NATIVE_CLONE_CALLBACK_SUPPORTED:
-        logging.debug(
-            "Using sys.setswitchinterval() workaround for #435 in container "
-            "mode because native callback is not available."
-        )
-        py_switch_interval = sys.getswitchinterval()
-        sys.setswitchinterval(1000)
-
     # create some workers
     for i in range(min(benchmark.num_of_threads, unfinished_runs)):
         if STOPPED_BY_INTERRUPT:
@@ -230,9 +222,6 @@ def _execute_run_set(
     )
     if energy and cpu_packages:
         energy = {pkg: energy[pkg] for pkg in energy if pkg in cpu_packages}
-
-    if not containerexecutor.NATIVE_CLONE_CALLBACK_SUPPORTED:
-        sys.setswitchinterval(py_switch_interval)
 
     if STOPPED_BY_INTERRUPT:
         output_handler.set_error("interrupted", runSet)

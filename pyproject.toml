@@ -74,6 +74,7 @@ build-backend = 'setuptools.build_meta'
 
 [tool.setuptools]
 packages = ["benchexec", "benchexec.tablegenerator", "benchexec.tools"]
+ext-modules = [{name = "ose", sources = ["benchexec/extension_modules/ose.c"]}]
 zip-safe = true
 platforms = ["Linux"]
 license-files = ["LICENSES/*.txt"]

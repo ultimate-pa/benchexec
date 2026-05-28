@@ -14,6 +14,7 @@ import errno
 import fcntl
 import logging
 import os
+import ose
 import re
 import resource  # noqa: F401 @UnusedImport necessary to eagerly import this module
 import shlex
@@ -21,7 +22,6 @@ import shutil
 import signal
 import socket
 import struct
-import sys
 import subprocess
 
 from benchexec import libc
@@ -114,14 +114,6 @@ LXCFS_BASE_DIR = b"/var/lib/lxcfs"
 LXCFS_PROC_DIR = LXCFS_BASE_DIR + b"/proc"
 SYS_CPU_DIR = b"/sys/devices/system/cpu"
 
-_CLONE_NESTED_CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int)
-"""Type for callback of execute_in_namespace, nested in our primary callback."""
-
-NATIVE_CLONE_CALLBACK_SUPPORTED = (
-    os.uname().sysname == "Linux" and os.uname().machine == "x86_64"
-)
-"""Whether we use generated native code for clone or an unsafe Python fallback"""
-
 _ERROR_MSG_USER_NS_RESTRICTION = (
     "Unprivileged user namespaces are forbidden on this system. "
     "You can temporarily enable them with "
@@ -150,29 +142,6 @@ def check_apparmor_userns_restriction(error: OSError):
     )
 
 
-@contextlib.contextmanager
-def allocate_stack(size=DEFAULT_STACK_SIZE):
-    """Allocate some memory that can be used as a stack.
-    @return: a ctypes void pointer to the *top* of the stack.
-    """
-    # Allocate memory with appropriate flags for a stack as in
-    # https://blog.fefe.de/?ts=a85c8ba7
-    base = libc.mmap_anonymous(
-        size + PAGE_SIZE,  # allocate one page more for a guard page
-        libc.PROT_READ | libc.PROT_WRITE,
-        libc.MAP_GROWSDOWN | libc.MAP_STACK,
-    )
-
-    try:
-        # configure guard page that crashes the application when it is written to
-        # (on stack overflow)
-        libc.mprotect(base, PAGE_SIZE, libc.PROT_NONE)
-
-        yield ctypes.c_void_p(base + size + PAGE_SIZE)
-    finally:
-        libc.munmap(base, size + PAGE_SIZE)
-
-
 def execute_in_namespace(func, use_network_ns=True):
     """Execute a function in a child process in separate namespaces.
     @param func: a parameter-less function returning an int
@@ -181,160 +150,19 @@ def execute_in_namespace(func, use_network_ns=True):
     """
     flags = (
         signal.SIGCHLD
-        | libc.CLONE_NEWNS
-        | libc.CLONE_NEWUTS
-        | libc.CLONE_NEWIPC
-        | libc.CLONE_NEWUSER
-        | libc.CLONE_NEWPID
+        | ose.CLONE_NEWNS
+        | ose.CLONE_NEWUTS
+        | ose.CLONE_NEWIPC
+        | ose.CLONE_NEWUSER
+        | ose.CLONE_NEWPID
     )
     if use_network_ns:
-        flags |= libc.CLONE_NEWNET
+        flags |= ose.CLONE_NEWNET
 
-    # We need to use the syscall clone(), which is similar to fork(), but not available
-    # in the Python API. We can call it directly using ctypes, but then the state of the
-    # Python interpreter is inconsistent, so we need to fix that. Python has
-    # three C functions that should be called before and after fork/clone:
-    # https://docs.python.org/3/c-api/sys.html#c.PyOS_BeforeFork
-    # This is the same that os.fork() does (cf. os_fork_impl
-    # in https://github.com/python/cpython/blob/main/Modules/posixmodule.c).
-    # Furthermore, it is very important that we have the GIL during clone(),
-    # otherwise the child will often deadlock when trying to execute Python code.
-    # Luckily, the ctypes module allows us to hold the GIL while executing the
-    # function by using ctypes.PyDLL as library access instead of ctypes.CLL.
+    with ose.Stack(size=DEFAULT_STACK_SIZE) as stack:
+        pid = ose.clone(func=func, stack=stack, flags=flags)
 
-    # One difficulty remains: The interpreter state in the child is inconsistent
-    # until PyOS_AfterFork_Child() is called. However, if we pass the Python function
-    # _python_clone_child_callback() as callback to clone and do the cleanup in
-    # its first line, it is too late because the Python interpreter is already used.
-    # This actually causes problems if benchexec is executed with a high number of
-    # parallel runs because of thread contention, the gil_drop_request and a deadlock
-    # in drop_gil (cf. https://github.com/sosy-lab/benchexec/issues/435).
-    # So we should avoid executing Python code at all before PyOS_AfterFork_Child().
-    # We do not want to take the hassle of shipping C code with BenchExec, so we use
-    # _generate_native_clone_child_callback() to generate machine code on the fly
-    # as replacement for _python_clone_child_callback(). This works for x86_64 Linux
-    # and we expect practically all BenchExec users to fall in this category. For others
-    # there is still the pure Python callback, which in practice works totally fine as
-    # long as there does not exist a huge number of threads.
-    # There is a workaround using sys.setswitchinterval(), however, it is too late to
-    # apply it here in this function, because gil_drop_request could already be set.
-    # Summary:
-    # - For Linux x86_64 we use native code from _generate_native_clone_child_callback()
-    # - Otherwise, we use sys.setswitchinterval() as workaround in localexecution.py.
-    # - Direct users of ContainerExecutor are fine in practice if they use few threads.
-
-    func_p = _CLONE_NESTED_CALLBACK(func)  # store in variable to avoid GC
-
-    with allocate_stack() as stack:
-        try:
-            ctypes.pythonapi.PyOS_BeforeFork()
-            pid = libc.clone(_clone_child_callback, stack, flags, func_p)
-        finally:
-            ctypes.pythonapi.PyOS_AfterFork_Parent()
     return pid
-
-
-@libc.CLONE_CALLBACK
-def _python_clone_child_callback(func_p):
-    """Used as callback for clone, calls the passed function pointer."""
-    # Strictly speaking, PyOS_AfterFork_Child should be called immediately after
-    # clone calls our callback before executing any Python code because the
-    # interpreter state is inconsistent, but here we are already in the Python
-    # world, so it could be too late. For more information cf. execute_in_namespace()
-    # and https://github.com/sosy-lab/benchexec/issues/435.
-    # Thus we use this function only as fallback of architectures where we have no
-    # native callback. For benchexec we combine it with the sys.setswitchinterval()
-    # workaround in localexecution.py. Other users of ContainerExecutor should be safe
-    # as long as they do not use many threads. We cannot do anything before cloning
-    # because it might be too late anyway (gil_drop_request could be set already).
-    ctypes.pythonapi.PyOS_AfterFork_Child()
-
-    return _CLONE_NESTED_CALLBACK(func_p)()
-
-
-def _generate_native_clone_child_callback():
-    """Generate Linux x86_64 machine code
-    that does the same as _python_clone_child_callback"""
-    # Inspired by https://csl.name/post/python-jit/
-
-    # Allocate one page of memory where we put the code
-    mem = libc.mmap_anonymous(PAGE_SIZE, libc.PROT_READ | libc.PROT_WRITE)
-
-    # Get address of PyOS_AfterFork_Child that we want to call
-    afterfork_address = ctypes.cast(
-        ctypes.pythonapi.PyOS_AfterFork_Child, ctypes.c_void_p
-    ).value
-    assert afterfork_address is not None  # ensured above
-
-    # Generate machine code that does the same as _python_clone_child_callback
-    # We use this C code as template (with dummy address for PyOS_AfterFork_Child)
-    """
-    int clone_child_callback(int (*func_p)()) {
-      void (*PyOS_AfterFork_Child)() = (void*)0xffeeddccbbaa9988;
-      PyOS_AfterFork_Child();
-      return func_p();
-    }
-    """  # noqa: B018
-    # We compile this code and disassemble it with
-    """
-    gcc -Os -fPIC -shared -fomit-frame-pointer -march=native clone_child_callback.c \
-        -o clone_child_callback.o
-    objdump -d --disassembler-options=suffix clone_child_callback.o
-    """  # noqa: B018
-    # This gives the following code (machine code left, assembler right)
-    #
-    # <clone_child_callback>:
-    # Store address in rdx:
-    #     48 ba 88 99 aa bb cc    movabsq $0xffeeddccbbaa9988,%rdx
-    #     dd ee ff
-    # Allocate space on stack:
-    #     48 83 ec 18             subq   $0x18,%rsp
-    # Clear eax:
-    #     31 c0                   xorl   %eax,%eax
-    # Copy rdi (value of parameter func_p) to stack:
-    #     48 89 7c 24 08          movq   %rdi,0x8(%rsp)
-    # Call rdx (where address is stored) regularly:
-    #     ff d2                   callq  *%rdx
-    # Copy stack value func_p back to rdi:
-    #     48 8b 7c 24 08          movq   0x8(%rsp),%rdi
-    # Clear eax:
-    #     31 c0                   xorl   %eax,%eax
-    # Deallocate space on stack:
-    #     48 83 c4 18             addq   $0x18,%rsp
-    # Call function pointer in rdi (func_p) as tail call:
-    #     ff e7                   jmpq   *%rdi
-    #
-    # The following creates exactly the same machine code, just with the real address
-    movabsq_address_rdx = b"\x48\xba" + afterfork_address.to_bytes(8, sys.byteorder)
-    subq_0x18_rsp = b"\x48\x83\xec\x18"
-    xorl_eax_eax = b"\x32\xc0"
-    movq_rdi_stack = b"\x48\x89\x7c\x24\x08"
-    callq_rdx = b"\xff\xd2"
-    movq_stack_rdi = b"\x48\x8b\x7c\x24\x08"
-    addq_0x18_rsp = b"\x48\x83\xc4\x18"
-    jmpq_rdi = b"\xff\xe7"
-    code = (
-        movabsq_address_rdx
-        + subq_0x18_rsp
-        + xorl_eax_eax
-        + movq_rdi_stack
-        + callq_rdx
-        + movq_stack_rdi
-        + xorl_eax_eax
-        + addq_0x18_rsp
-        + jmpq_rdi
-    )
-    ctypes.memmove(mem, code, len(code))
-
-    # Make code executable
-    libc.mprotect(mem, PAGE_SIZE, libc.PROT_READ | libc.PROT_EXEC)
-    return libc.CLONE_CALLBACK(mem)
-
-
-if NATIVE_CLONE_CALLBACK_SUPPORTED:
-    _clone_child_callback = _generate_native_clone_child_callback()
-else:
-    _clone_child_callback = _python_clone_child_callback
 
 
 def setup_user_mapping(
@@ -1307,7 +1135,7 @@ def setup_cgroup_namespace():
     appropriately. This method assumes that cgroupv2 is used.
     It needs to be called from within the target process."""
     # Move us to new namespace.
-    libc.unshare(libc.CLONE_NEWCGROUP)
+    libc.unshare(ose.CLONE_NEWCGROUP)
 
     # Mount /sys/fs/cgroup with view of new namespace.
     # For some reason, mounting directly on top of /sys/fs/cgroup gives EBUSY,

@@ -37,16 +37,6 @@ void test_BenchExec_assumptions() {
   _Static_assert(sizeof(struct ifreq) >= 16 + 14, "struct ifreq");
 
   // from libc.py
-  _Static_assert(sizeof(long) == sizeof(off_t), "Unexpected size of off_t");
-  _Static_assert(CLONE_NEWNS == 0x00020000, "CLONE_NEWNS");
-  _Static_assert(CLONE_NEWUTS == 0x04000000, "CLONE_NEWUTS");
-  _Static_assert(CLONE_NEWIPC == 0x08000000, "CLONE_NEWIPC");
-  _Static_assert(CLONE_NEWUSER == 0x10000000, "CLONE_NEWUSER");
-  _Static_assert(CLONE_NEWPID == 0x20000000, "CLONE_NEWPID");
-  _Static_assert(CLONE_NEWNET == 0x40000000, "CLONE_NEWNET");
-  _Static_assert(PROT_NONE == 0, "PROT_NONE");
-  _Static_assert(MAP_GROWSDOWN == 0x00100, "MAP_GROWSDOWN");
-  _Static_assert(MAP_STACK == 0x20000, "MAP_STACK");
   _Static_assert(MS_RDONLY == 1, "MS_RDONLY");
   _Static_assert(MS_NOSUID == 2, "MS_NOSUID");
   _Static_assert(MS_NODEV == 4, "MS_NODEV");

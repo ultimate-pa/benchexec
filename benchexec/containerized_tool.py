@@ -13,6 +13,7 @@ import inspect
 import logging
 import multiprocessing
 import os
+import ose
 import signal
 import socket
 import tempfile
@@ -172,14 +173,14 @@ def _init_container(
     # worker process) into new namespaces.
     # The exception is the PID namespace, which will only apply to children processes.
     flags = (
-        libc.CLONE_NEWNS
-        | libc.CLONE_NEWUTS
-        | libc.CLONE_NEWIPC
-        | libc.CLONE_NEWUSER
-        | libc.CLONE_NEWPID
+        ose.CLONE_NEWNS
+        | ose.CLONE_NEWUTS
+        | ose.CLONE_NEWIPC
+        | ose.CLONE_NEWUSER
+        | ose.CLONE_NEWPID
     )
     if not network_access:
-        flags |= libc.CLONE_NEWNET
+        flags |= ose.CLONE_NEWNET
     try:
         libc.unshare(flags)
     except OSError as e:
